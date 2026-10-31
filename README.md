@@ -75,6 +75,22 @@ Bridge.RegisterCallback('mon:callback', function(src, a, b) return a + b end)
 Bridge.GetSystems()                      -- { framework = 'esx', inventory = 'ox_inventory', ... }
 ```
 
+### Ajouts 1.2.0 (serveur)
+
+```lua
+Bridge.GetVehicleOwner('ABC 123')        -- identifiant du propriétaire (ESX owner / citizenid) ou nil
+Bridge.SetDuty(src, true)                -- service QB / Qbox ; false sous ESX (pas de service natif)
+Bridge.GetSocietyMoney('society_mechanic')          -- esx_addonaccount, Renewed-Banking, qb-banking, qb-management
+Bridge.AddSocietyMoney('society_mechanic', 500, 'motif')
+Bridge.RemoveSocietyMoney('society_mechanic', 500)  -- false si le solde ne suffit pas
+Bridge.GetJobs()                         -- { [métier] = { label, grades = { [n] = libellé } } }
+Bridge.GetJobInfo(src)                   -- { name, label, grade, gradeLabel, onDuty, isBoss }
+Bridge.GetPlayers()
+Bridge.RegisterStash(id, label, slots, poids, { mechanic = 0 }, { vector3(...) })  -- ox : métiers + coordonnées
+Bridge.StashCount(id, item) / Bridge.StashAdd(id, item, n) / Bridge.StashRemove(id, item, n)               -- ox
+Bridge.CanCarryItem(src, item, n)
+```
+
 ## API client
 
 ```lua
@@ -178,6 +194,7 @@ Depuis le 27 oct. 2026, la partie **serveur** du pont des scripts AEOM est centr
 
 ## Historique
 
+- **1.2.0** (28 oct. 2026) : propriétaire de véhicule, service QB/Qbox, comptes de société (dont Renewed-Banking), métiers et grades, stash ox avec métiers et coordonnées, exports Pascal correspondants (demandés par aeom_mechanic, `docs/bridge-todo.md`).
 - **1.1.0** (27 oct. 2026) : pont des scripts AEOM centralisé (`server/compat.lua`, exports `Compat` / `CompatInfo`), nouvelles fonctions (`Inv.item`, `Inv.canCarryWeight`, `Inv.registerUseHook`, `Inv.slotCount`, `Inv.countMany`, `Inv.slotsOf`, `Bridge.getMetadata`, `Bridge.setMetadata`), `files { 'init.lua' }` pour le téléchargement client, `Config.Compat`.
 - **1.0.0** : API Pascal (`AddMoney`, `GetJob`...), détection auto, callbacks, événements unifiés.
 

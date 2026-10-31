@@ -5,7 +5,7 @@ author 'AEOM Development'
 
 name 'aeom-bridge'
 description 'Bridge partagé : framework, inventaire, target, notifications, textui, clés de véhicule, callbacks'
-version '1.1.0'
+version '1.2.0'
 
 -- init.lua est inclus par les autres ressources via shared_script '@aeom-bridge/init.lua' :
 -- le client doit pouvoir le télécharger, donc il doit être déclaré ici.

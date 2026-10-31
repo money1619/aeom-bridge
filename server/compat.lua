@@ -656,6 +656,130 @@ function Inv.registerStash(id, label, slots, weight, owner)
 end
 
 
+--------------------------------------------------------------------------- ajouts 1.2.0
+-- Besoins d'aeom_mechanic (docs/bridge-todo.md) : propriétaire d'un véhicule, service, sociétés, stash complet.
+
+-- Identifiant du propriétaire d'un véhicule (ESX owner / QB-Qbox citizenid), nil si non possédé. Bloquant.
+-- Plaques cherchées telles quelles et complétées à 8 caractères (selon les scripts de concession).
+function Bridge.getVehicleOwner(plate)
+    if type(plate) ~= 'string' or #plate == 0 or #plate > 12 or not started('oxmysql') then return nil end
+    local trimmed = plate:gsub('^%s+', ''):gsub('%s+$', '')
+    local sql
+    if fw == 'esx' then sql = 'SELECT owner FROM owned_vehicles WHERE plate = ? OR plate = ? LIMIT 1'
+    elseif fw == 'qb' or fw == 'qbx' then sql = 'SELECT citizenid FROM player_vehicles WHERE plate = ? OR plate = ? LIMIT 1'
+    else return nil end
+    local ok, owner = pcall(function() return exports.oxmysql:scalar_async(sql, { trimmed, ('%-8s'):format(trimmed) }) end)
+    return ok and owner or nil
+end
+
+-- Service : QB / Qbox (onduty natif). ESX n'a pas de service natif : renvoie false (le script gère le sien).
+function Bridge.setDuty(src, onDuty)
+    if fw ~= 'qb' and fw ~= 'qbx' then return false end
+    local p = Bridge.getPlayer(src)
+    if not p or not p.Functions or not p.Functions.SetJobDuty then return false end
+    return pcall(p.Functions.SetJobDuty, onDuty == true) == true
+end
+
+local function esxShared(name)
+    local p, done = promise.new(), false
+    local function finish(v)
+        if done then return end
+        done = true
+        p:resolve(v)
+    end
+    TriggerEvent('esx_addonaccount:getSharedAccount', name, function(acc) finish(acc or false) end)
+    SetTimeout(3000, function() finish(false) end)
+    return Citizen.Await(p) or nil
+end
+
+-- Solde d'une société ('society_<métier>' ou '<métier>'), nil si aucun système détecté. Bloquant.
+function Bridge.getSocietyMoney(society)
+    if type(society) ~= 'string' then return nil end
+    local job = society:gsub('^society_', '')
+    if fw == 'esx' and started('esx_addonaccount') then
+        local acc = esxShared('society_' .. job)
+        return acc and acc.money or nil
+    end
+    if started('Renewed-Banking') then return exports['Renewed-Banking']:getAccountMoney(job) end
+    if started('qb-banking') then return exports['qb-banking']:GetAccountBalance(job) end
+    if started('qb-management') then return exports['qb-management']:GetAccount(job) end
+    return nil
+end
+
+-- Ajoute (amount > 0) ou retire (amount < 0, seulement si le solde suffit). true si c'est fait. Bloquant.
+function Bridge.addSocietyMoney(society, amount, reason)
+    amount = math.floor(tonumber(amount) or 0)
+    if type(society) ~= 'string' or amount ~= amount then return false end
+    if amount == 0 then return true end
+    local job = society:gsub('^society_', '')
+    if fw == 'esx' and started('esx_addonaccount') then
+        local acc = esxShared('society_' .. job)
+        if not acc then return false end
+        if amount > 0 then acc.addMoney(amount) return true end
+        if acc.money < -amount then return false end
+        acc.removeMoney(-amount)
+        return true
+    end
+    if started('Renewed-Banking') then
+        if amount > 0 then return exports['Renewed-Banking']:addAccountMoney(job, amount) ~= false end
+        return exports['Renewed-Banking']:removeAccountMoney(job, -amount) == true
+    end
+    if started('qb-banking') then
+        if amount > 0 then return exports['qb-banking']:AddMoney(job, amount, reason) ~= false end
+        return exports['qb-banking']:RemoveMoney(job, -amount, reason) == true
+    end
+    if started('qb-management') then
+        if amount > 0 then exports['qb-management']:AddMoney(job, amount) return true end
+        return exports['qb-management']:RemoveMoney(job, -amount) == true
+    end
+    return false
+end
+
+-- Stash ox complet : métiers autorisés { [métier] = grade minimal } et coordonnées (vector3 ou liste). ox seulement.
+function Inv.registerStashFull(id, label, slots, weight, groups, coords)
+    if inv ~= 'ox' then return false end
+    exports.ox_inventory:RegisterStash(id, label, slots or 50, weight or 100000, nil, groups, coords)
+    return true
+end
+
+function Inv.stashCount(id, item)
+    if inv ~= 'ox' then return 0 end
+    return exports.ox_inventory:Search(id, 'count', item) or 0
+end
+
+function Inv.stashAdd(id, item, count)
+    if inv ~= 'ox' then return false end
+    return exports.ox_inventory:AddItem(id, item, count) == true
+end
+
+function Inv.stashRemove(id, item, count)
+    if inv ~= 'ox' then return false end
+    return exports.ox_inventory:RemoveItem(id, item, count) == true
+end
+
+-- API Pascal (exports['aeom-bridge']:X / Bridge.X via init.lua) pour ces ajouts et pour des fonctions compat utiles.
+exports('GetVehicleOwner', Bridge.getVehicleOwner)
+exports('SetDuty', Bridge.setDuty)
+exports('GetSocietyMoney', Bridge.getSocietyMoney)
+exports('AddSocietyMoney', function(society, amount, reason)
+    amount = math.floor(tonumber(amount) or 0)
+    if amount <= 0 then return false end
+    return Bridge.addSocietyMoney(society, amount, reason)
+end)
+exports('RemoveSocietyMoney', function(society, amount, reason)
+    amount = math.floor(tonumber(amount) or 0)
+    if amount <= 0 then return false end
+    return Bridge.addSocietyMoney(society, -amount, reason)
+end)
+exports('GetJobs', function() return Bridge.getJobs() end)
+exports('GetJobInfo', function(src) return Bridge.getJob(src) end)
+exports('GetPlayers', function() return Bridge.getPlayers() end)
+exports('RegisterStash', Inv.registerStashFull)
+exports('StashCount', Inv.stashCount)
+exports('StashAdd', Inv.stashAdd)
+exports('StashRemove', Inv.stashRemove)
+exports('CanCarryItem', function(src, item, count) return Inv.canCarry(src, item, count) == true end)
+
 ---------------------------------------------------------------------------
 -- Exposition aux ressources AEOM (via leur shim bridge/server.lua)
 ---------------------------------------------------------------------------
